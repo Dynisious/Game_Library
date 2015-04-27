@@ -280,7 +280,7 @@ public final class Serialisation {
      * @param bytes The array of bytes to deserialise.
      * @param obj   The Object to serialise the bytes into.
      *
-     * @return Returns an object of type T.
+     * @return Returns an Object.
      *
      * @throws java.lang.IllegalAccessException Thrown if this Field object is
      *                                          enforcing Java language access
@@ -361,7 +361,7 @@ public final class Serialisation {
                 for (int i = 0; i < array.length; i++) { //Loop until the end of array.
                     byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the Object in bytes.
                     buff.get(b); //Get the bytes of the Object
-                    array[i] = deserialiseObj(b, cls); //Get the next Object.
+                    array[i] = deserialiseObj(b, cls.cast(new Object())); //Get the next Object.
                 }
                 return array; //Return array.
             }
@@ -386,7 +386,8 @@ public final class Serialisation {
                 if (i.getType().isArray()) { //This Field is an Array.
                     byte[] array = new byte[buff.getInt()]; //Create a byte[] the length of the bytes of the Array.
                     buff.get(array); //Get the bytes of the Array.
-                    i.set(obj, deserialiseObj(array, i.getType()));
+                    i.set(obj, deserialiseObj(array, i.getType().cast(
+                            new Object())));
                 } else { //This Field is not an Array.
                     if (i.getType() == boolean.class) { //It's a boolean.
                         i.set(obj, (buff.get() == 1)); //Get a byte from buff.
@@ -411,41 +412,193 @@ public final class Serialisation {
                         }
                         i.set(obj, s); //Set the String.
                     } else { //It's an object.
-                        buff.mark(); //Mark this position 
                         byte[] b = new byte[buff.getInt()]; //Create a byte[] for the bytes of the Object.
                         buff.get(b); //Get the bytes that represent the Object.
-                        
-                        i.set(obj, deserialiseObj(b, i.getType())); //Get the Object.
+                        i.set(obj, deserialiseObj(b, i.getType().cast(
+                                new Object()))); //Get the Object.
                     }
                 }
             }
 
             if (cls.getSuperclass() != null) { //This Object has a super Class.
-                buff.put(serialiseObj(cls.getSuperclass())); //Add on the buff of the super Class.
+                byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the superClass Object.
+                buff.get(b); //Get the bytes of the superClass Object.
+                deserialiseObj(b, obj); //Set the values of obj as a superclass.
             }
             for (Class i : cls.getInterfaces()) { //Loop through all interfaces for this Class.
-                buff.put(serialiseObj(i.cast(obj))); //Add on the buff of the interface.
+                byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the interface Object.
+                buff.get(b); //Get the bytes of the interface Object.
+                deserialiseObj(b, obj); //Set the values of obj as a superclass.
             }
+            return obj; //Return the object.
             //</editor-fold>
         }
     }
 
     /**
-     * Deserialises an array of bytes into an object of type Object.
+     * <p>
+     * Deserialises an array of bytes into an object of type Object.</p>
      *
-     * @param <T>    The return type of deserialiseObj
      * @param bytes  The array of bytes to deserialise.
      * @param offset The offset in the buffer of the first byte to read.
      * @param length The maximum number of bytes to read from the
      *               buffer.
+     * @param obj    The object to deserialise.
      *
-     * @return Returns an object of type Object.
+     * @return Returns an Object.
+     *
+     * @throws java.lang.IllegalAccessException Thrown if this Field object is
+     *                                          enforcing Java language access
+     *                                          control and the underlying field
+     *                                          is inaccessible.
+     * @throws GameLibrary.NotSerialisableType  Thrown if 'obj' has not declared
+     *                                          a String[] 'serialisable'.
+     * @throws java.lang.NoSuchFieldException   Thrown if a field with the
+     *                                          specified name is not found.
      */
-    public static <T extends Object> T deserialiseObj(byte[] bytes, int offset,
-                                                      int length) {
-        ByteArrayInputStream b = new ByteArrayInputStream(bytes, offset, length);
-        ObjectInputStream o = new ObjectInputStream(b);
-        return (Object) o.readObject();
+    public static Object deserialiseObj(byte[] bytes, int offset, int length,
+                                        Object obj)
+            throws IllegalArgumentException, IllegalAccessException,
+                   NotSerialisableType, NoSuchFieldException {
+        ByteBuffer buff = ByteBuffer.wrap(bytes, offset, length); //Create a ByteBuffer around bytes.
+        Class cls = obj.getClass(); //The class object of obj.
+        if (cls.isArray()) { //It's an Array type.
+            //<editor-fold defaultstate="collapsed" desc="Deserialise Array">
+            if (cls == boolean.class) { //It's a boolean.
+                boolean[] array = new boolean[buff.getInt()]; //Initialises the new boolean[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = (buff.get() == 0); //Put true or false into array.
+                }
+                return array; //Return array.
+            } else if (cls == byte.class) { //It's a byte.
+                byte[] array = new byte[buff.getInt()]; //Initialises the new byte[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.get(); //Put put the byte into array.
+                }
+                return array; //Return array.
+            } else if (cls == char.class) { //It's a char.
+                char[] array = new char[buff.getInt()]; //Initialises the new char[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getChar(); //Put the char into array.
+                }
+                return array; //Return array.
+            } else if (cls == double.class) { //It's a double.
+                double[] array = new double[buff.getInt()]; //Initialises the new double[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getDouble(); //Put put the double into array.
+                }
+                return array; //Return array.
+            } else if (cls == float.class) { //It's a  float.
+                float[] array = new float[buff.getInt()]; //Initialises the new float[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getFloat(); //Put put the float into array.
+                }
+                return array; //Return array.
+            } else if (cls == int.class) { //It's an int.
+                int[] array = new int[buff.getInt()]; //Initialises the new int[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getInt(); //Put put the int into array.
+                }
+                return array; //Return array.
+            } else if (cls == long.class) { //It's a long.
+                long[] array = new long[buff.getInt()]; //Initialises the new long[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getLong(); //Put put the long into array.
+                }
+                return array; //Return array.
+            } else if (cls == short.class) { //It's a short.
+                short[] array = new short[buff.getInt()]; //Initialises the new short[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    array[i] = buff.getShort(); //Put put the short into array.
+                }
+                return array; //Return array.
+            } else if (cls == String.class) { //It's a String.
+                String[] array = new String[buff.getInt()]; //Initialises the new String[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    for (int e = 0; e < buff.getInt(); e++) { /*Get an int representing
+                         the length of the String and loop and loop to that.*/
+
+                        array[i] += Character.toString(buff.getChar()); //Adds the next char into the String.
+                    }
+                }
+                return array; //Return array.
+            } else { //It's an Object.
+                Object[] array = new Object[buff.getInt()]; //Initialises the new Object[].
+                for (int i = 0; i < array.length; i++) { //Loop until the end of array.
+                    byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the Object in bytes.
+                    buff.get(b); //Get the bytes of the Object
+                    array[i] = deserialiseObj(b, cls.cast(new Object())); //Get the next Object.
+                }
+                return array; //Return array.
+            }
+            //</editor-fold>
+        } else { //obj is not an Array.
+            //<editor-fold defaultstate="collapsed" desc="Deserialise Object">
+            String[] fields; //The different field names to deserialise.
+            try {
+                fields = (String[]) cls.getDeclaredField(str).get(obj); //Get the fields to deserialise.
+            } catch (NoSuchFieldException ex) {
+                throw new NotSerialisableType(
+                        "No String[] 'serialisable' was found in "
+                        + cls.getName() + ".", ex);
+            } catch (ClassCastException ex) {
+                throw new ClassCastException(
+                        "The field 'serialisable' in " + cls.
+                        getName() + " is not type String[].");
+            }
+            buff.getInt(); //Get the int that representing the length of the bytes of this Object
+            for (String field : fields) { //Loop through every Field.
+                Field i = cls.getDeclaredField(field); //Get this Field.
+                if (i.getType().isArray()) { //This Field is an Array.
+                    byte[] array = new byte[buff.getInt()]; //Create a byte[] the length of the bytes of the Array.
+                    buff.get(array); //Get the bytes of the Array.
+                    i.set(obj, deserialiseObj(array, i.getType().cast(
+                            new Object())));
+                } else { //This Field is not an Array.
+                    if (i.getType() == boolean.class) { //It's a boolean.
+                        i.set(obj, (buff.get() == 1)); //Get a byte from buff.
+                    } else if (i.getType() == byte.class) { //It's a byte.
+                        i.set(obj, buff.get()); //Get a byte from buff.
+                    } else if (i.getType() == char.class) { //It's a char.
+                        i.set(obj, buff.getChar()); //Get a char from buff.
+                    } else if (i.getType() == double.class) { //It's a double.
+                        i.set(obj, buff.getDouble()); //Get a double from buff.
+                    } else if (i.getType() == float.class) { //It's a  float.
+                        i.set(obj, buff.getFloat()); //Get a float from buff.
+                    } else if (i.getType() == int.class) { //It's an int.
+                        i.set(obj, buff.getInt()); //Get a int from buff.
+                    } else if (i.getType() == long.class) { //It's a long.
+                        i.set(obj, buff.getLong()); //Get a long from buff.
+                    } else if (i.getType() == short.class) { //It's a short.
+                        i.set(obj, buff.getShort()); //Get a short from buff.
+                    } else if (i.getType() == String.class) {
+                        String s = ""; //Create a String to deserialise the String into.
+                        for (int e = 0; e < buff.getInt(); e++) { //Loop the length of the String.
+                            s += Character.toString(buff.getChar()); //Get the next char.
+                        }
+                        i.set(obj, s); //Set the String.
+                    } else { //It's an object.
+                        byte[] b = new byte[buff.getInt()]; //Create a byte[] for the bytes of the Object.
+                        buff.get(b); //Get the bytes that represent the Object.
+                        i.set(obj, deserialiseObj(b, i.getType().cast(
+                                new Object()))); //Get the Object.
+                    }
+                }
+            }
+
+            if (cls.getSuperclass() != null) { //This Object has a super Class.
+                byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the superClass Object.
+                buff.get(b); //Get the bytes of the superClass Object.
+                deserialiseObj(b, obj); //Set the values of obj as a superclass.
+            }
+            for (Class i : cls.getInterfaces()) { //Loop through all interfaces for this Class.
+                byte[] b = new byte[buff.getInt()]; //Create a byte[] the length of the interface Object.
+                buff.get(b); //Get the bytes of the interface Object.
+                deserialiseObj(b, obj); //Set the values of obj as a superclass.
+            }
+            return obj; //Return the object.
+            //</editor-fold>
+        }
     }
 
     /**
