@@ -8,6 +8,7 @@ package GameLibrary.Serialisation;
 import java.lang.reflect.Array; //Used to interact with Arrays during serialisation.
 import java.nio.ByteBuffer; //Used to serialise and deserialise the Object into/from arrays of bytes.
 import java.lang.reflect.Field; //Used to interact with the fields of Objects during serialisation.
+import java.lang.reflect.Modifier;
 /**
  * <p>
  * Used to Serialise and Deserialise Objects into/from arrays of bytes with
@@ -173,7 +174,6 @@ public class Serialiser {
         return Integer.BYTES + (int) Math.ceil(((double) length) / Byte.SIZE); //Return the size of an boolean[] of length 'length'.
     }
 
-    private static final byte originalBit = (byte) (1 << 7); //A byte which represents 1 bit in the 8th postion in a byte.
     /**
      * <p>
      * Returns a ByteBuffer storing the bytes representing the passed
@@ -195,28 +195,28 @@ public class Serialiser {
     public static ByteBuffer BooleanArrayToBytes(
             byte[] buff, int buffPos, int boolPos, int boolLength,
             boolean[] bool) throws IndexOutOfBoundsException { //Booleans are stored as single 1's or 0's in bytes with 8 booleans being stored in a single byte.
-        if (boolLength < bool.length - boolPos) { //The number of iterations to be made does not exceed the number that can be made.
+        if (boolLength <= bool.length - boolPos) { //The number of iterations to be made does not exceed the number that can be made.
             ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(buffPos); //Create a ByteBuffer to serialise to.
             b.putInt(boolLength); //Serialise an int representing the the number of booleans to be serialised into b.
-            for (int i = boolPos; i < (boolPos + boolLength); i += 8) { //Loop through as many groups of 8 as evenly bit into bool.
-                byte bit = originalBit; //A byte which starts at originalBit but will shift right every boolean.
+            for (int i = boolPos; i < (boolPos + boolLength) - 8; i += 8) { //Loop through as many groups of 8 as evenly bit into bool.
+                byte bit = 1; //A byte which starts at 1 but will shift left every boolean.
                 byte val = 0; //A byte which stores the boolean values for serialisation.
                 for (int e = i; e < (i + 8); e++) { //Iterate through the next 8 booleans.
                     if (bool[e]) { //This boolean needs to be set in val.
                         val |= bit; //Set a bit to true in val.
                     }
-                    bit >>= 1; //Right shift bit for the next bool.
+                    bit <<= 1; //Left shift bit for the next bool.
                 }
                 b.put(val); //Serialise val into b.
             }
             int remainder = (int) Math.IEEEremainder(boolLength, 8); //Get an int representing the number of booleans left to iterate through.
-            byte bit = originalBit; //A byte which starts at originalBit but will shift right every boolean.
+            byte bit = 1; //A byte which starts at 1 but will shift left every boolean.
             byte val = 0; //A byte which stores the boolean values for serialisation.
             for (int i = boolPos + boolLength - remainder; i < boolPos + boolLength; i++) { //Loop through the last booleans.
                 if (bool[i]) { //This boolean needs to be set in val.
                     val |= bit; //Set a bit to true in val.
                 }
-                bit >>= 1; //Right shift bit for the next bool.
+                bit <<= 1; //Left shift bit for the next bool.
             }
             return b.put(val); //Serialise val into b and then return b.
         } else { //The number of iterations to be made exceeds the maximum possible.
@@ -224,7 +224,7 @@ public class Serialiser {
                     "The number of booleans asked to be read from the Array exceeded the maximum that could be read.");
         }
     }
-    
+
     /**
      * <p>
      * Deserialises a boolean[] from a passed byte[].</p>
@@ -235,24 +235,24 @@ public class Serialiser {
      * @return The ByteBuffer containing the bytes representing the booleans
      *         serialised.
      */
-    public static DeserialiseResult<boolean[]> BooleanArrayFromBytes(byte[] buff,
-                                                                     int pos) { //Booleans are stored as single 1's or 0's in bytes with 8 booleans being stored in a single byte.
+    public static DeserialiseResult<boolean[]> BooleanArrayFromBytes(
+            byte[] buff, int pos) { //Booleans are stored as single 1's or 0's in bytes with 8 booleans being stored in a single byte.
         ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(pos); //Wrap a ByteBuffer around buff to deserialise from.
         boolean[] bool = new boolean[b.getInt()]; //Create a boolean[] to store all the booleans that need to be deserialised.
-        for (int i = 0; i < bool.length; i += 8) { //Loop through as many groups of 8 as evenly bit into bool.
-            byte bit = originalBit; //A byte which starts at originalBit but will shift right every boolean.
+        for (int i = 0; i < bool.length - 8; i += 8) { //Loop through as many groups of 8 as evenly bit into bool.
+            byte bit = 1; //A byte which starts at 1 but will shift left every boolean.
             byte val = b.get(); //Deserialise the next byte of values from b.
             for (int e = i; e < (i + 8); e++) { //Iterate through the next 8 booleans.
                 bool[e] = (bit & val) != 0; //Assign true or false to this boolean based on the next bit in val.
-                bit >>= 1; //Right shift bit for the next bool.
+                bit <<= 1; //Right shift bit for the next bool.
             }
         }
         int remainder = (int) Math.IEEEremainder(bool.length, 8); //Get an int representing the number of booleans left to iterate through.
-        byte bit = originalBit; //A byte which starts at originalBit but will shift right every boolean.
+        byte bit = 1; //A byte which starts at 1 but will shift left every boolean.
         byte val = b.get(); //Deserialise the next byte of values from b.
         for (int i = bool.length - remainder; i < bool.length; i++) { //Loop through the last booleans.
             bool[i] = (bit & val) != 0; //Assign true or false to this boolean based on the next bit in val.
-            bit >>= 1; //Right shift bit for the next bool.
+            bit <<= 1; //Left shift bit for the next bool.
         }
         return new DeserialiseResult(bool, b); //Return the result of this deserialise.
     }
@@ -321,24 +321,28 @@ public class Serialiser {
         if (cls.isInstance(obj)) { //obj is an intance of cls.
             if (cls.isArray()) { //cls is an Array class.
                 ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(pos); //Create a ByteBuffer around buff to serialise to.
-                b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                 if (cls == String[].class) { //It's a String[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (String s : (String[]) obj) { //Loop through each String.
                         b = StringToBytes(buff, b.position(), s); //Serialise the String and get the ByteBuffer.
                     }
                 } else if (cls == int[].class) { //It's an int[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (int i : (int[]) obj) { //Loop through each int.
                         b.putInt(i); //Serialise i into b.
                     }
                 } else if (cls == long[].class) { //It's a long[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (long l : (long[]) obj) { //Loop through each long.
                         b.putLong(l); //Serialise i into b.
                     }
                 } else if (cls == double[].class) { //It's a double[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (double d : (double[]) obj) { //Loop through each double.
                         b.putDouble(d); //Serialise d into b.
                     }
                 } else if (cls == float[].class) { //It's a float[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (float f : (float[]) obj) { //Loop through each float.
                         b.putFloat(f); //Serialise f into b.
                     }
@@ -346,14 +350,18 @@ public class Serialiser {
                     b = BooleanArrayToBytes(buff, b.position(), 0,
                             Array.getLength(obj), (boolean[]) obj); //Serialise the boolean array into b.
                 } else if (cls == byte[].class) { //It's a byte[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     b.put((byte[]) obj); //Serialise obj into b.
                 } else if (cls == short[].class) { //It's a short[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (short s : (short[]) obj) { //Loop through each short.
                         b.putShort(s); //Serialise s into b.
                     }
                 } else { //It's an Object[].
+                    b.putInt(Array.getLength(obj)); //Serialise an int representing the length of the Array to b.
                     for (Object o : (Object[]) obj) { //Loop through each Object in obj
-                        b = ObjectToBytes(o.getClass(), buff, b.position(), o); //Serialise o into b and get the new ByteBuffer.
+                        b = ObjectToBytes(o.getClass(), buff, b.position(), o,
+                                true); //Serialise o into b and get the new ByteBuffer.
                     }
                 }
                 return b;
@@ -373,7 +381,6 @@ public class Serialiser {
      * Deserialises an Array of type T from an Array of bytes before returning
      * the result.</p>
      *
-     * @param <T>  The type of Array returned.
      * @param cls  The type of Array to deserialise.
      * @param buff The Array of bytes to deserialise from.
      * @param pos  The position in buff to start at.
@@ -386,7 +393,7 @@ public class Serialiser {
      *                                          it's nullary constructor cannot
      *                                          be accessed.
      */
-    public static <T> DeserialiseResult<?> ArrayFromBytes(
+    public static DeserialiseResult<?> ArrayFromBytes(
             Class cls, byte[] buff, int pos) throws InstantiationException, IllegalAccessException { //Arrays are serialised in the form 'Array length, value bytes'.
         ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(pos); //Create a ByteBuffer around buff to deserialise from.
         if (cls == String[].class) { //It's a String[].
@@ -440,7 +447,7 @@ public class Serialiser {
             for (int i = 0; i < val.length; i++) { //Loop through each Object.
                 if (b.get() == 1) { //This is not a null value.
                     DeserialiseResult res = ObjectFromBytes(cls, buff, b.
-                            position(), null); //Deserialise a Object from b.
+                            position(), null, true); //Deserialise a Object from b.
                     b = res.buff; //Get the returned byte buffer.
                     val[i] = res.val; //Get the Object from res.
                 }
@@ -454,85 +461,92 @@ public class Serialiser {
      * Returns the size of 'obj' of type 'cls' after it has been serialised
      * using ObjectToBytes.</p>
      *
-     * @param cls The class type of 'obj'.
-     * @param obj The object to get the size of.
+     * @param cls   The class type of 'obj'.
+     * @param obj   The object to get the size of.
+     * @param first A boolean used to indicate whether this is the first call on
+     *              'obj' or whether the size of a superClass or interface is
+     *              being added. Calls made by user should always be true.
      *
      * @return An int representing the size of 'obj' in bytes.
      *
      * @throws java.lang.IllegalAccessException Thrown if 'obj' is not an
      *                                          instance of 'cls'.
      */
-    public static int ObjectSize(Class cls, Object obj) throws IllegalAccessException {
-        if (cls.isInstance(obj)) { //obj is an instance of the given Class.
-            int size = 0; //This int will keep a count of the size of this Object in bytes.
-            Field[] fields = cls.getDeclaredFields(); //Get the fields for this Object type.
-            for (Field f : fields) { //Loop through every field.
-                f.setAccessible(true);
-                Class fCls = f.getType(); //Get the class type for this field.
+    public static int ObjectSize(Class cls, Object obj, boolean first) throws IllegalAccessException {
+        if (obj == null) { //obj is null.
+            return Byte.BYTES; //Return one byte size to indicate this is a null value.
+        } else { //obj is not null 
+            if (cls.isInstance(obj)) { //obj is an instance of the given Class.
+                int size = first ? Byte.BYTES : 0; //This int will keep a count of the size of this Object in bytes; initialy one byte to store whether obj is null if this is the first iteration.
+                Field[] fields = cls.getDeclaredFields(); //Get the fields for this Object type.
+                for (Field f : fields) { //Loop through every field.
+                    f.setAccessible(true);
+                    Class fCls = f.getType(); //Get the class type for this field.
 
-                if (fCls.isArray()) { //This field contains an Array.
-                    if (fCls == String[].class) { //It's a String[].
-                        size += Integer.BYTES; //Add an int to represent the length of this Array.
-                        for (String s : (String[]) f.get(obj)) { //Loop through every String in this Field.
-                            size += StringSize(s.length()); //Add the size of this String to size.
+                    if (fCls.isArray()) { //This field contains an Array.
+                        if (fCls == String[].class) { //It's a String[].
+                            size += Integer.BYTES; //Add an int to represent the length of this Array.
+                            for (String s : (String[]) f.get(obj)) { //Loop through every String in this Field.
+                                size += StringSize(s.length()); //Add the size of this String to size.
+                            }
+                        } else if (fCls == int[].class) { //It's an int[].
+                            size += IntArraySize(Array.getLength(f.get(obj))); //Add the size of this Array to size.
+                        } else if (fCls == long[].class) { //It's a long[].
+                            size += LongArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == double[].class) { //It's a double[].
+                            size += DoubleArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == float[].class) { //It's a float[].
+                            size += FloatArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == boolean[].class) { //It's a boolean[].
+                            size += BooleanArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == byte[].class) { //It's a byte[].
+                            size += ByteArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == short[].class) { //It's a short[].
+                            size += ShortArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
+                        } else if (fCls == char[].class) { //It's a char[].
+                            size += CharacterArraySize(Array.getLength(obj)); //Adds the size of this array to size.
+                        } else { //It's an Object[].
+                            size += Integer.BYTES; //Add an int to represent the length of this Array.
+                            for (Object o : (Object[]) f.get(obj)) { //Loop through each Object in this Array.
+                                size += ObjectSize(fCls.getComponentType(), o,
+                                        true); //Add the size of this Object to size.
+                            }
                         }
-                    } else if (fCls == int[].class) { //It's an int[].
-                        size += IntArraySize(Array.getLength(f.get(obj))); //Add the size of this Array to size.
-                    } else if (fCls == long[].class) { //It's a long[].
-                        size += LongArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == double[].class) { //It's a double[].
-                        size += DoubleArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == float[].class) { //It's a float[].
-                        size += FloatArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == boolean[].class) { //It's a boolean[].
-                        size += BooleanArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == byte[].class) { //It's a byte[].
-                        size += ByteArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == short[].class) { //It's a short[].
-                        size += ShortArraySize(Array.getLength(obj)); //Adds the size of this Array to size.
-                    } else if (fCls == char[].class) { //It's a char[].
-                        size += CharacterArraySize(Array.getLength(obj)); //Adds the size of this array to size.
-                    } else { //It's an Object[].
-                        size += Integer.BYTES; //Add an int to represent the length of this Array.
-                        for (Object o : (Object[]) f.get(obj)) { //Loop through each Object in this Array.
-                            size += ObjectSize(fCls.getComponentType(), o); //Add the size of this Object to size.
-                        }
+                    } else if (fCls == String.class) { //It's a String.
+                        size += StringSize(((String) f.get(obj)).length()); //Add the size of this String to size.
+                    } else if (fCls == int.class) { //It's an int.
+                        size += Integer.BYTES; //Add the size of an int to size.
+                    } else if (fCls == long.class) { //It's a long.
+                        size += Long.BYTES; //Add the size of a long to size.
+                    } else if (fCls == double.class) { //It's a double.
+                        size += Double.BYTES; //Add the size of a double to size.
+                    } else if (fCls == float.class) { //It's a float.
+                        size += Float.BYTES; //Add the size of a float to size.
+                    } else if (fCls == boolean.class || fCls == byte.class) { //It's a boolean or a byte.
+                        size += Byte.BYTES; //Add the size of a byte to size.
+                    } else if (fCls == short.class) { //It's a short.
+                        size += Short.BYTES; //Add the size of a Short to size.
+                    } else if (fCls == char.class) { //It's a char.
+                        size += Character.BYTES; //Add the size of a char to size.
+                    } else { //It's an Object.
+                        size += ObjectSize(fCls.getComponentType(), f.get(obj),
+                                true); //Add the size of this Object to size.
                     }
-                } else if (fCls == String.class) { //It's a String.
-                    System.out.println(f.getName());
-                    StringSize(((String) f.get(obj)).length()); //Add the size of this String to size.
-                } else if (fCls == int.class) { //It's an int.
-                    size += Integer.BYTES; //Add the size of an int to size.
-                } else if (fCls == long.class) { //It's a long.
-                    size += Long.BYTES; //Add the size of a long to size.
-                } else if (fCls == double.class) { //It's a double.
-                    size += Double.BYTES; //Add the size of a double to size.
-                } else if (fCls == float.class) { //It's a float.
-                    size += Float.BYTES; //Add the size of a float to size.
-                } else if (fCls == boolean.class || fCls == byte.class) { //It's a boolean or a byte.
-                    size += Byte.BYTES; //Add the size of a byte to size.
-                } else if (fCls == short.class) { //It's a short.
-                    size += Short.BYTES; //Add the size of a Short to size.
-                } else if (fCls == char.class) { //It's a char.
-                    size += Character.BYTES; //Add the size of a char to size.
-                } else { //It's an Object.
-                    System.out.println(f.getType().getName());
-                    size += ObjectSize(fCls.getComponentType(), f.get(obj)); //Add the size of this Object to size.
                 }
-            }
 
-            if (cls.getSuperclass() != null) {
-                size += ObjectSize(cls.getSuperclass(), obj); //Add the size of obj as an instance of it's superClass
-            }
+                if (cls.getSuperclass() != null) {
+                    size += ObjectSize(cls.getSuperclass(), obj, false); //Add the size of obj as an instance of it's superClass
+                }
 
-            for (Class c : cls.getInterfaces()) { //Loop through all interfaces used by 'cls'
-                size += ObjectSize(c, obj); //Add the size of obj as an instance of 'c'
-            }
+                for (Class c : cls.getInterfaces()) { //Loop through all interfaces used by 'cls'
+                    size += ObjectSize(c, obj, false); //Add the size of obj as an instance of 'c'
+                }
 
-            return size;
-        } else {
-            throw new IllegalAccessException(
-                    "The passed object is not an instance of the passed Class.");
+                return size;
+            } else {
+                throw new IllegalAccessException(
+                        "The passed object is not an instance of the passed Class.");
+            }
         }
     }
 
@@ -541,10 +555,13 @@ public class Serialiser {
      * Serialises 'obj' into buff starting at position 'pos' as an instance of
      * 'cls'.</p>
      *
-     * @param cls  The class type of 'obj'.
-     * @param buff The byte[] to serialise into.
-     * @param pos  The starting position in buff.
-     * @param obj  The object to serialise.
+     * @param cls   The class type of 'obj'.
+     * @param buff  The byte[] to serialise into.
+     * @param pos   The starting position in buff.
+     * @param obj   The object to serialise.
+     * @param first A boolean used to indicate whether this is the first call on
+     *              'obj' or whether the size of a superClass or interface is
+     *              being added. Calls made by user should always be true.
      *
      * @return buff after serialising 'obj' into it.
      *
@@ -552,7 +569,7 @@ public class Serialiser {
      *                                          instance of 'cls'.
      */
     public static ByteBuffer ObjectToBytes(
-            Class cls, byte[] buff, int pos, Object obj) throws IllegalAccessException {
+            Class cls, byte[] buff, int pos, Object obj, boolean first) throws IllegalAccessException {
         ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(pos); //Create a ByteBuffer around buff and set the position to pos.
         if (obj == null) { //This is a null value.
             b.put((byte) 0); //Serialise 0 into b to indicate that this is a null value.
@@ -562,7 +579,9 @@ public class Serialiser {
                 if (cls.isArray()) { //This is an Array type.
                     return ArrayToBytes(cls.getComponentType(), buff, pos, obj); //Return the serialise Array.
                 } else { //This is an Object type.
-                    b.put((byte) 1); //Serialise 1 into b to indicate that this is not a null value.
+                    if (first) { //Serialise 1 into b to indicate that this is not a null value if it's the first iteration.
+                        b.put((byte) 1); //Serialise a byte into b.
+                    }
                     Field[] fields = cls.getDeclaredFields(); //Get the fields for this Object type.
                     for (Field f : fields) { //Loop through every field.
                         f.setAccessible(true);
@@ -583,9 +602,7 @@ public class Serialiser {
                         } else if (fCls == float.class) { //It's a float.
                             b.putFloat(f.getFloat(obj)); //Serialise the float into b.
                         } else if (fCls == boolean.class) { //It's a boolean.
-                            b.put(
-                                    (byte) (f.getBoolean(obj)
-                                            ? 1 : 0)); //Serialise the boolean into b.
+                            b.put((byte) (f.getBoolean(obj) ? 1 : 0)); //Serialise the boolean into b.
                         } else if (fCls == byte.class) { //It's a byte.
                             b.put(f.getByte(obj)); //Serialise the byte into b.
                         } else if (fCls == short.class) { //It's a short.
@@ -597,12 +614,11 @@ public class Serialiser {
 
                     if (cls.getSuperclass() != null) { //There is a superClass
                         b = ObjectToBytes(cls.getSuperclass(), buff, b.
-                                position(),
-                                obj); //Serialise the object as an instance of it's superClass.
+                                position(), obj, false); //Serialise the object as an instance of it's superClass.
                     }
 
                     for (Class c : cls.getInterfaces()) { //Loop through all interfaces used by 'cls'
-                        b = ObjectToBytes(c, buff, b.position(), obj); //Serialise the object as an instance of it's interface.
+                        b = ObjectToBytes(c, buff, b.position(), obj, false); //Serialise the object as an instance of it's interface.
                     }
 
                     return b;
@@ -619,12 +635,15 @@ public class Serialiser {
      * Deserialises an instance of 'cls' from 'buff' starting at position
      * 'pos'.</p>
      *
-     * @param <T>  The type of Object returned.
-     * @param cls  The class type to deserialise.
-     * @param buff The byte[] to deserialise from.
-     * @param pos  The starting position in buff.
-     * @param obj  The Object to deserialise values into, if null a new instance
-     *             of 'cls' will be created.
+     * @param cls   The class type to deserialise.
+     * @param buff  The byte[] to deserialise from.
+     * @param pos   The starting position in buff.
+     * @param obj   The Object to deserialise values into, if null a new
+     *              instance
+     *              of 'cls' will be created.
+     * @param first A boolean used to indicate whether this is the first call on
+     *              'obj' or whether the size of a superClass or interface is
+     *              being added. Calls made by user should always be true.
      *
      * @return The deserialised Object and the ByteBuffer used to deserialise
      *         it.
@@ -637,73 +656,88 @@ public class Serialiser {
      * @throws java.lang.ClassCastException     Thrown if 'obj' is not an
      *                                          instance of 'cls'.
      */
-    public static <T> DeserialiseResult<?> ObjectFromBytes(
-            Class cls, byte[] buff, int pos, Object obj) throws InstantiationException, IllegalAccessException, ClassCastException {
+    public static DeserialiseResult<?> ObjectFromBytes(
+            Class cls, byte[] buff, int pos, Object obj, boolean first) throws InstantiationException, IllegalAccessException, ClassCastException {
         ByteBuffer b = (ByteBuffer) ByteBuffer.wrap(buff).position(pos); //Create a ByteBuffer around buff and set the position to pos.
         if (cls.isArray()) { //This is an Array type.
             return ArrayFromBytes(cls, buff, pos); //Return the deserialised Array.
         } else { //This is an Object type.
-            if (b.get() == 1) { //This instance is is a non null value.
-                if (obj == null) { //obj needs to have a value to be deserialised to.
-                    obj = cls.newInstance(); //Create a new Instance of cls to deserialise values to.
-                } else if (!cls.isInstance(obj)) { //obj is not an instance of cls.
-                    throw new ClassCastException(
-                            "The passed Object is not an instance of the passed Class."); //Throw an exception to the calling code.
+            if (first) { //This is the first iteration so check for null obj.
+                if (b.get() == 1) { //This instance is is a non null value.
+                    if (obj == null) { //obj needs to have a value to be deserialised to.
+                        try {
+                            obj = cls.newInstance(); //Create a new Instance of cls to deserialise values to.
+                        } catch (InstantiationException ex) {
+                            throw new InstantiationException(
+                                    "The passed class does not have a contructor with no parameters.");
+                        }
+                    }
+                } else { //This is a null value.
+                    return new DeserialiseResult<>(null, b); //Return a null result.
                 }
+            }
+
+            if (!cls.isInstance(obj)) { //obj is not an instance of cls.
+                throw new ClassCastException(
+                        "The passed Object is not an instance of the passed Class."); //Throw an exception to the calling code.
+            } else {
                 Field[] fields = cls.getDeclaredFields(); //Get the fields for this Object type.
                 for (Field f : fields) { //Loop through every field.
-                    f.setAccessible(true);
-                    Class fCls = f.getType(); //Get the class type for this field.
-                    if (fCls.isArray()) { //This field contains an Array.
-                        DeserialiseResult res = ArrayFromBytes(fCls, buff, b.
-                                position()); //Deserialise the Array from buff and get the result.
-                        b = res.buff; //Set b to the updated ByteBuffer.
-                        f.set(obj, res.val); //Set the value in obj.
-                    } else if (fCls == String.class) { //It's a String[].
-                        DeserialiseResult res = StringFromBytes(buff, b.
-                                position()); //Deserialise the String from buff and get the result.
-                        b = res.buff; //Set b to the updated ByteBuffer.
-                        f.set(obj, res.val); //Set the value in obj.
-                    } else if (fCls == int.class) { //It's an int.
-                        f.set(obj, b.getInt()); //Deserialise an int from b into obj.
-                    } else if (fCls == long.class) { //It's a long.
-                        f.set(obj, b.getLong()); //Deserialise a long from b into obj.
-                    } else if (fCls == double.class) { //It's a double.
-                        f.set(obj, b.getDouble()); //Deserialise an double from b into obj.
-                    } else if (fCls == float.class) { //It's a float.
-                        f.set(obj, b.getFloat()); //Deserialise an float from b into obj.
-                    } else if (fCls == boolean.class) { //It's a boolean.
-                        f.set(obj, (b.get() == 1)); //Deserialise an boolean from b into obj.
-                    } else if (fCls == byte.class) { //It's a byte.
-                        f.set(obj, b.get()); //Deserialise an byte from b into obj.
-                    } else if (fCls == short.class) { //It's a short.
-                        f.set(obj, b.getShort()); //Deserialise an short from b into obj.
-                    } else { //It's an Object.
-                        DeserialiseResult res = ObjectFromBytes(fCls, buff, b.
-                                position(), null); //Deserialise an Object from b and get the result.
-                        b = res.buff; //Set b to the updated ByteBuffer.
-                        f.set(obj, res.val); //Set the deserialised Object in obj.
+                    if (!Modifier.isFinal(f.getModifiers())
+                            || !Modifier.isStatic(f.getModifiers())) { //This field is not 'static final'.
+                        f.setAccessible(true);
+                        Class fCls = f.getType(); //Get the class type for this field.
+                        if (fCls.isArray()) { //This field contains an Array.
+                            DeserialiseResult res = ArrayFromBytes(fCls, buff,
+                                    b.
+                                    position()); //Deserialise the Array from buff and get the result.
+                            b = res.buff; //Set b to the updated ByteBuffer.
+                            f.set(obj, res.val); //Set the value in obj.
+                        } else if (fCls == String.class) { //It's a String[].
+                            DeserialiseResult res = StringFromBytes(buff, b.
+                                    position()); //Deserialise the String from buff and get the result.
+                            b = res.buff; //Set b to the updated ByteBuffer.
+                            f.set(obj, res.val); //Set the value in obj.
+                        } else if (fCls == int.class) { //It's an int.
+                            f.set(obj, b.getInt()); //Deserialise an int from b into obj.
+                        } else if (fCls == long.class) { //It's a long.
+                            f.set(obj, b.getLong()); //Deserialise a long from b into obj.
+                        } else if (fCls == double.class) { //It's a double.
+                            f.set(obj, b.getDouble()); //Deserialise an double from b into obj.
+                        } else if (fCls == float.class) { //It's a float.
+                            f.set(obj, b.getFloat()); //Deserialise an float from b into obj.
+                        } else if (fCls == boolean.class) { //It's a boolean.
+                            f.set(obj, (b.get() == 1)); //Deserialise an boolean from b into obj.
+                        } else if (fCls == byte.class) { //It's a byte.
+                            f.set(obj, b.get()); //Deserialise an byte from b into obj.
+                        } else if (fCls == short.class) { //It's a short.
+                            f.set(obj, b.getShort()); //Deserialise an short from b into obj.
+                        } else { //It's an Object.
+                            DeserialiseResult res = ObjectFromBytes(fCls, buff,
+                                    b.
+                                    position(), null, true); //Deserialise an Object from b and get the result.
+                            b = res.buff; //Set b to the updated ByteBuffer.
+                            f.set(obj, res.val); //Set the deserialised Object in obj.
+                        }
                     }
                 }
 
                 if (cls.getSuperclass() != null) { //There is a superClass
-                    DeserialiseResult res = ObjectFromBytes(cls.getSuperclass(),
-                            buff, b.position(), obj); //Deserialise the values for obj's superClass into obj.
+                    DeserialiseResult res = ObjectFromBytes(cls.
+                            getSuperclass(),
+                            buff, b.position(), obj, false); //Deserialise the values for obj's superClass into obj.
                     b = res.buff; //Set b to the new updated ByteBuffer.
                     obj = res.val; //Set obj to the updated Object.
                 }
 
                 for (Class c : cls.getInterfaces()) { //Loop through all interfaces used by 'cls'
                     DeserialiseResult res = ObjectFromBytes(c, buff, b.
-                            position(),
-                            obj); //Deserialise the values for obj's interface into obj.
+                            position(), obj, false); //Deserialise the values for obj's interface into obj.
                     b = res.buff; //Set b to the new updated ByteBuffer.
                     obj = res.val; //Set obj to the updated Object.
                 }
 
                 return new DeserialiseResult<>(obj, b); //Return the result.
-            } else { //This is a null value.
-                return new DeserialiseResult<>(null, b); //Return a null result.
             }
         }
     }
